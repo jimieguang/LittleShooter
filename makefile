@@ -13,7 +13,7 @@ pclient.o:pclient.cpp
 	g++ -c pclient.cpp -o pclient.o
 
 pserver.o:pserver.cpp  
-	g++ -c pserver.cpp -o pserver.o
+	g++ -c pserver.cpp -o pserver.o -std=c++11
 
 
 
