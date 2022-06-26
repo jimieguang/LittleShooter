@@ -223,7 +223,6 @@ int main(int argc, char *argv[])
 			        for(int i=0;i<CLIENT;i++)printf("players %d:(%d,%d),turn:%d\n",i,x[i],y[i],turn[i]);
                     trans(x,y,turn,bullets,location_palyer1,location_palyer2,location_bullet1,location_bullet2);
                     show(map,WIDTH,HEIGHT,location_palyer1,location_palyer2,location_bullet1,location_bullet2);
-                    printf("show over\n");
                 }
                 
                 memset(recvbuf, 0, sizeof(recvbuf));
@@ -418,6 +417,17 @@ void show(int (*pre_map)[HEIGHT],int weight,int height, int* location_palyer1, i
         }
         printf("\n");
     }
+                    if(game_status > 0 && game_status == id + 1)
+                    {
+                        printf("You win!\n");
+                        exit(1);
+                    }
+                    else if(game_status > 0 && game_status != id + 1)
+                    {
+                        printf("You lose!\n");
+                        printf("%d %d\n",id,game_status);
+                        exit(1);
+                    }
 }
 
 //将服务端传来的数据格式转化为渲染所需格式

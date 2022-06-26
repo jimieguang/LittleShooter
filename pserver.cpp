@@ -74,20 +74,20 @@ void map_set() {        //地图设置，0-通行，1-障碍
     }
 }
 void victor() {         //游戏胜利判断
-    int live=0;
-    int tlive ;
-    for (int i = 0; i < CLIENT; i++) {
-        if (turn[i] != 4) {
-            live++;
-            tlive = i;
-        }
-    }
-    if (live == 0) {
-        game_status = -2;
-    }
-    else if (live == 1) {
-        game_status = tlive;
-    }
+    // int live=0;
+    // int tlive ;
+    // for (int i = 0; i < CLIENT; i++) {
+    //     if (turn[i] != 4) {
+    //         live++;
+    //         tlive = i;
+    //     }
+    // }
+    // if (live == 0) {
+    //     game_status = -2;
+    // }
+    // else if (live == 1) {
+    //     game_status = tlive;
+    // }
 }
 void accident() {       //与其他玩家碰撞
     for (int i = 0; i < CLIENT; i++) {
@@ -109,7 +109,11 @@ void hit() {            //子弹命中逻辑
                 bullets[i].status = false;
                 bullets[i].turn = 4;   //4表示子弹为爆炸状态
                 turn[j] = 4;           //同理，坦克为爆炸状态
-                victor();
+                //victor();
+                if(j < client_num)
+                {
+                    game_status = i + 1;
+                }
             }
         }
         for (int k = i + 1; k < CLIENT; k++) {          //子弹命中子弹
@@ -258,7 +262,7 @@ void getConn()
         turn[id] = action;
         accident();     //判断碰撞信息  
         pthread_mutex_unlock(&mute);
-        printf("玩家 %d 进入房间 \n",conn);        
+        printf("玩家 %d 进入房间 \n",conn-3);        
         //同步信息
     }
 }
