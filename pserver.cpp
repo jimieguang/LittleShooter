@@ -12,17 +12,13 @@
 #include <thread>
 #include <pthread.h>
 #include <list>
+#include <sys/signal.h>
 using namespace std;
 
-//10单选(20分)+10判断(20分)+4个主观题：进程并发互斥同步死锁(60分)
-//理解解题逻辑，思路，考察原理不针对具体章节，涉及具体代码，不会让我们写非常多的代码
-//多核操作系统作为扩展了解，不作考试要求
-//重点：进程、线程、CPU调度、存储管理，I/O设备管理
-
-#define PORT 6665
+#define PORT 12222
 #define IP "127.0.0.1"
 #define CLIENT 3        //客户端最大数目
-#define SERV_PORT 6665  //服务器端口号
+#define SERV_PORT 12222  //服务器端口号
 #define HEIGHT 20
 #define WIDTH 40
 #define NUMO 10         //障碍物量参数
@@ -33,6 +29,7 @@ int turn[CLIENT];   	//坦克方向：0,1,2,3分别是上下左右，4代表爆�
 int map[WIDTH][HEIGHT]; //地图
 int game_status=-1;     //游戏状态:-2（平局），-1（游戏未开始），0（游戏进行中），>0的整数代表胜家（且游戏结束），比如1代表以玩家1获胜结束游戏
 char output[1024];
+int test = 66;
 int client_num = 0;
 int mSocket;
 struct sockaddr_in servaddr;
@@ -73,38 +70,31 @@ void map_set() {        //地图设置，0-通行，1-障碍
         map[i][0] = 1;
     }
 }
-void victor() {         //游戏胜利判断
-    // int live=0;
-    // int tlive ;
-    // for (int i = 0; i < CLIENT; i++) {
-    //     if (turn[i] != 4) {
-    //         live++;
-    //         tlive = i;
-    //     }
-    // }
-    // if (live == 0) {
-    //     game_status = -2;
-    // }
-    // else if (live == 1) {
-    //     game_status = tlive;
-    // }
-}
-void accident() {       //与其他玩家碰撞
-    for (int i = 0; i < CLIENT; i++) {
-        for (int j = i+1; j < CLIENT; j++) {           
-            if (x[i] == x[j] && y[i] == y[j]) {       
-                //x[i] = 0; x[j] = 0; y[i] = 0; y[j] = 0; 		坦克爆炸
-                turn[i] = 4;turn[j] = 4;
-            }
-        }
+
+void SetupSignal() {
+    struct sigaction sa;
+
+    //在linux下写socket的程序的时候，如果尝试send到一个disconnected socket上，就会让底层抛出一个SIGPIPE信号。
+    //这个信号的缺省处理方法是退出进程
+    //重载这个信号的处理方法,如果接收到一个SIGPIPE信号，忽略该信号
+    sa.sa_handler = SIG_IGN;
+    sa.sa_flags = 0;
+    //sigemptyset()用来将参数set信号集初始化并清空
+    if (sigemptyset(&sa.sa_mask) == -1 ||
+            sigaction(SIGPIPE, &sa, 0) == -1) {
+        exit(-1);
     }
 }
 void hit() {            //子弹命中逻辑
     for (int i = 0; i < CLIENT; i++) {
+        if(bullets[i].status == true){
         if (map[bullets[i].x][bullets[i].y] == 1) {         //子弹命中障碍
             bullets[i].status = false;
         }
         for (int j = 0; j < CLIENT; j++) {
+            if(i==j){
+                continue;
+            }
             if (bullets[i].x == x[j] && bullets[i].y == y[j]) {         //子弹命中坦克
                 bullets[i].status = false;
                 bullets[i].turn = 4;   //4表示子弹为爆炸状态
@@ -124,6 +114,7 @@ void hit() {            //子弹命中逻辑
                 bullets[k].turn = 4;
             }
         }
+    }
     }
 }
 void package(int id)
@@ -220,6 +211,10 @@ void package(int id)
     k++;
     output[k] = (char)game_status;
     k++;
+    output[k] = ';';
+    k++;
+    output[k] = (char)test;
+    k++;
 } 
 
  
@@ -235,7 +230,26 @@ void sendMsg(int sender,char* msg,int length)
         }
     }
 }
- 
+
+bool end()
+{
+    if(turn[0] == 4 && turn[1] == 4)
+    {
+        return true;
+    }
+    else if(turn[0] == 4 && turn[2] == 4)
+    {
+        return true;
+    }
+    else if(turn[1] == 4 && turn[2] == 4)
+    {
+        return true;
+    }
+    else 
+    {
+        return false;
+    }
+} 
 void getConn()
 {
     int id;
@@ -260,38 +274,35 @@ void getConn()
         x[id] = id_x;
         y[id] = id_y;
         turn[id] = action;
-        accident();     //判断碰撞信息  
         pthread_mutex_unlock(&mute);
-        printf("玩家 %d 进入房间 \n",conn-3);        
+        printf("玩家 %d 进入房间 \n",conn-3);   
+            
         //同步信息
     }
 }
 //fd_set可以理解为一个集合，这个集合中存放的是文件描述符(file descriptor)，即文件句柄，它用一位来表示一个fd
 void get_Datas()
 {
-    void accident();
     void hit();
     int n;
     int action ;
     int id;
     char input[1024];
     struct timeval tv;//该结构用于描述一段时间长度，如果在这个时间内，需要监视的描述符没有事件发生则函数返回，返回值为0
-    tv.tv_sec = 10;//设置倒计时时间
-    tv.tv_usec = 0;
+    tv.tv_sec = 0;//设置倒计时时间
+    tv.tv_usec = 10;
     pthread_detach(pthread_self());
     //使子线程处于分离态，保证子线程资源可被回收
     action = 3;
     //人物移动
-    void player_move(int mover,int id);
+    void player_act(int mover,int id);
     //子弹移动
     void bullet_move();
     //初始化信息  
     int num = 0;      
     while(1)
     {
-        // usleep(500);
-        for(int z=0;z<60000000;z++);
-        num ++;
+        for(int z=0;z<20000000;z++);
         //memset(buf, 0 ,sizeof(buf));
         std::list<int>::iterator it;
         for(it=connList.begin(),id = 0; it!=connList.end(); ++it,++id)
@@ -315,37 +326,41 @@ void get_Datas()
             }
             else if(retval == 0)//超时
             {
-                //printf("not message\n");
-                pthread_mutex_lock(&mute);
-                package(id);
-                sendMsg(*it, output, strlen(output));
-                pthread_mutex_unlock(&mute);
+                // printf("not message\n");
+                // pthread_mutex_lock(&mute);
+                // package(id);
+                // sendMsg(*it, output, strlen(output));
+                // num ++;
+                // pthread_mutex_unlock(&mute);
             }
             else//有可读数据
             {
                 pthread_mutex_lock(&mute);
-                
                 int len = recv(*it, input, sizeof(input), 0);
-                
                 if (len > 0) {
-                    player_move(input[0],id);  //人物移动
-                    accident();     //判断碰撞信息  
+                    player_act(input[0],id);  //人物行动
                 }
                 pthread_mutex_unlock(&mute);
             }
+            pthread_mutex_lock(&mute);
             bullet_move();
-            printf("move over\n");
-            printf("num:%d\n",num);
-            accident();     //判断碰撞信息 
+            // num ++;
+            // printf("move over\n");
+            // printf("num:%d\n",num);
             //同步信息
             package(id);
             sendMsg(*it, output, strlen(output));
+            memset(output, 0, sizeof(output));
+            // printf("deal\n");
+            pthread_mutex_unlock(&mute);
+            
             
         }
     }
 }
 int main()
 {
+    SetupSignal();
     map_set();
     //new socket
     cout<<"1.创建socket"<<endl;
@@ -370,6 +385,9 @@ int main()
     if(bind(mSocket, (struct sockaddr* ) &servaddr, sizeof(servaddr))==-1)
     {
         perror("bind");
+        while(end()){
+
+        }
         exit(1);
     }
     cout<<"3.监听端口号"<<endl;
@@ -377,6 +395,9 @@ int main()
     if(listen(mSocket, 20) == -1)
     {
         perror("listen");
+        while(end()){
+
+        }
         exit(1);
     }
     len = sizeof(servaddr);
@@ -392,12 +413,12 @@ int main()
     t2.detach();
     while(1)//做一个死循环使得主线程不会提前退出
     {
- 
+        sleep(1);
     }
     return 0;
 }
 
-void player_move(int mover,int id){
+void player_act(int mover,int id){
     int action=5;
     switch(mover)
         {
@@ -407,25 +428,29 @@ void player_move(int mover,int id){
             case 'd':action=3;break;
             case 'j':action=4;break;
         }
+        if(turn[id] == 4){
+            //死者不准动
+            return ;
+        }
         
         {                //坦克移动逻辑
             if(action == 0){
-                if (turn[id]==0 && map[x[id]][y[id] - 1] == 0){
+                if (map[x[id]][y[id] - 1] == 0){
                     y[id] -= 1;      //同向移动（且没有障碍），不同向只改变方向
                 }turn[id]=0;
             }
             else if (action == 1) {
-                if (turn[id] == 1 && map[x[id]][y[id] + 1] == 0) {
+                if (map[x[id]][y[id] + 1] == 0) {
                     y[id] += 1;      //同向移动（且没有障碍），不同向只改变方向
                 }turn[id] = 1;
             }
             else if (action == 2) {
-                if (turn[id] == 2 && map[x[id]-1][y[id]] == 0) {
+                if (map[x[id]-1][y[id]] == 0) {
                     x[id] -= 1;     //同向移动（且没有障碍），不同向只改变方向
                 }turn[id] = 2;
             }
             else if (action == 3) {
-                if (turn[id] == 3 && map[x[id] + 1][y[id]] == 0) {
+                if (map[x[id] + 1][y[id]] == 0) {
                     x[id] += 1;     //同向移动（且没有障碍），不同向只改变方向
                 }turn[id] = 3;
             }
@@ -467,6 +492,10 @@ void bullet_move(){
                     hit();
                 }
             }
+        }
+        else{
+            bullets[i].x = 0;
+            bullets[i].y = 0;
         }
     }
 }

@@ -21,14 +21,14 @@
 
 #define RESET_CURSOR()printf("\033[H")
 
-#define MYPORT  6665
+#define MYPORT  12222
 #define BUFFER_SIZE 1024
 
 #define MAXLINE 1024    //缓冲数组大小
 #define CLIENT 3    //客户端最大数目
 #define MAXB 20   //子弹最大数目
 #define MAXE 100   //事件最大数目
-#define SERV_PORT 6665  //服务器端口号
+#define SERV_PORT 12222  //服务器端口号
 #define HEIGHT 20
 #define WIDTH 40
 #define NUMO 2         //障碍物量参数
@@ -57,6 +57,28 @@ struct Bullets{
     bool status;    //false代表子弹不存在，true代表子弹存在
 }bullets[CLIENT];
 int id;
+
+int test; //用于校验收到的数据是否合法
+#define TEXT 66
+bool end()
+{
+    if(turn[0] == 4 && turn[1] == 4)
+    {
+        return true;
+    }
+    else if(turn[0] == 4 && turn[2] == 4)
+    {
+        return true;
+    }
+    else if(turn[1] == 4 && turn[2] == 4)
+    {
+        return true;
+    }
+    else 
+    {
+        return false;
+    }
+}
 void depackage(char buf[])
 {
     int k = 0;
@@ -142,6 +164,9 @@ void depackage(char buf[])
     k++;
     game_status = (int)buf[k];
     k++;
+    k++;
+    test = (int)buf[k];
+    k++;
 }
 
 
@@ -161,7 +186,7 @@ int main(int argc, char *argv[])
     memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons(MYPORT);  ///服务器端口
-    servaddr.sin_addr.s_addr = inet_addr("127.0.0.1");  ///服务器ip
+    servaddr.sin_addr.s_addr = inet_addr("114.132.159.131");  ///服务器ip
     
     //连接服务器，成功返回0，错误返回-1
     //服务端IP地址和端口号
@@ -180,12 +205,15 @@ int main(int argc, char *argv[])
     //人物位置数组，第三个元素表示朝向（上下左右炸：01234）
     int location_palyer1[3];
     int location_palyer2[3];
+    int location_palyer3[3];
     //子弹位置数组，第三个元素表示朝向（上下左右炸：01234）
     int location_bullet1[3];
     int location_bullet2[3];
-    void trans(int *x,int *y,int *turn,struct Bullets *bullets,int* location_palyer1, int* location_palyer2, int* location_bullet1, int* location_bullet2);
-    void show(int (*pre_map)[HEIGHT],int weight,int height, int* location_palyer1, int* location_palyer2, int* location_bullet1, int* location_bullet2);
+    int location_bullet3[3];
+    void trans(int *x,int *y,int *turn,struct Bullets *bullets,int* location_palyer1, int* location_palyer2,int* location_palyer3, int* location_bullet1, int* location_bullet2,int* location_bullet3);
+    void show(int (*pre_map)[HEIGHT],int weight,int height, int* location_palyer1, int* location_palyer2,int* location_palyer3, int* location_bullet1, int* location_bullet2,int* location_bullet3);
 
+    int num = 0;
     while(1){
         /*把可读文件描述符的集合清空*/
         FD_ZERO(&rfds);
@@ -213,16 +241,21 @@ int main(int argc, char *argv[])
             if(FD_ISSET(sockfd,&rfds)){
                 char recvbuf[BUFFER_SIZE];
                 int len;
-                
                 len = recv(sockfd, recvbuf, sizeof(recvbuf),0);
                 if(len > 0)
                 {
                     depackage(recvbuf);
+                    if(test!=TEXT){
+                        num++;
+                        continue;
+                    }; //数据不合法则不进行渲染
                     printf("\033[2J");
                     printf("receive:\n");
-			        for(int i=0;i<CLIENT;i++)printf("players %d:(%d,%d),turn:%d\n",i,x[i],y[i],turn[i]);
-                    trans(x,y,turn,bullets,location_palyer1,location_palyer2,location_bullet1,location_bullet2);
-                    show(map,WIDTH,HEIGHT,location_palyer1,location_palyer2,location_bullet1,location_bullet2);
+			        for(int i=0;i<CLIENT;i++)printf("players %d:(%d,%d),turn:%d\n",i+1,x[i],y[i],turn[i]);
+                    trans(x,y,turn,bullets,location_palyer1,location_palyer2,location_palyer3,location_bullet1,location_bullet2,location_bullet3);
+                    show(map,WIDTH,HEIGHT,location_palyer1,location_palyer2,location_palyer3,location_bullet1,location_bullet2,location_bullet3);
+                    printf("show over:%d\n",num);
+                    test = 0;
                 }
                 
                 memset(recvbuf, 0, sizeof(recvbuf));
@@ -248,8 +281,8 @@ int main(int argc, char *argv[])
  	return 0;
 }
 
- //map中{-1：爆炸，0：无，1：障碍，2-10：玩家1及子弹1信息(红色），22-30：玩家2及子弹2信息（绿色）}
-void show(int (*pre_map)[HEIGHT],int weight,int height, int* location_palyer1, int* location_palyer2, int* location_bullet1, int* location_bullet2){
+ //map中{-1：爆炸，0：无，1：障碍，2-10：玩家1及子弹1信息(红色），22-30：玩家2及子弹2信息（绿色），42-50：玩家三及子弹三信息（黄色）}
+void show(int (*pre_map)[HEIGHT],int weight,int height, int* location_palyer1, int* location_palyer2,int* location_palyer3, int* location_bullet1, int* location_bullet2,int* location_bullet3){
     int i, j;
     //复制map数组
     int map[WIDTH][HEIGHT] = {0};
@@ -339,6 +372,48 @@ void show(int (*pre_map)[HEIGHT],int weight,int height, int* location_palyer1, i
             map[i][j] = -1;
             break;
     }
+    // 5.玩家三的位置信息
+    i = location_palyer3[0];
+    j = location_palyer3[1];
+    switch(location_palyer3[2]){
+        case 0:
+            map[i][j] = 42;
+            break;
+        case 1:
+            map[i][j] = 43;
+            break;
+        case 2:
+            map[i][j] = 44; //head @
+            map[i-1][j] = 45;
+            break;
+        case 3:
+            map[i][j] = 44;
+            map[i+1][j] = 46;
+            break;
+        case 4:
+            map[i][j] = -1;
+            break;
+    }
+    // 6.子弹三的位置信息
+    i = location_bullet3[0];
+    j = location_bullet3[1];
+    switch(location_bullet3[2]){
+        case 0:
+            map[i][j] = 47;
+            break;
+        case 1:
+            map[i][j] = 48;
+            break;
+        case 2:
+            map[i][j] = 49;
+            break;
+        case 3:
+            map[i][j] = 10;
+            break;
+        case 4:
+            map[i][j] = -1;
+            break;
+    }
     // 最后渲染初始地图
     for (j = 0; j < height; j++){
         for (i = 0; i < weight; i++){
@@ -413,25 +488,56 @@ void show(int (*pre_map)[HEIGHT],int weight,int height, int* location_palyer1, i
                 case 30:
                     printf("\033[0;47;32m⇢\033[0m");
                     break;
+                case 42:
+                    printf("\033[0;47;33m▲\033[0m");
+                    break;
+                case 43:
+                    printf("\033[0;47;33m▼\033[0m");
+                    break;
+                case 44:
+                    printf("\033[0;47;33m@\033[0m");
+                    break;
+                case 45:
+                    printf("\033[0;47;33m<\033[0m");
+                    break;
+                case 46:
+                    printf("\033[0;47;33m>\033[0m");
+                    break;
+                case 47:
+                    printf("\033[0;47;33m⇡\033[0m");
+                    break;
+                case 48:
+                    printf("\033[0;47;33m⇣\033[0m");
+                    break;
+                case 49:
+                    printf("\033[0;47;33m⇠\033[0m");
+                    break;
+                case 50:
+                    printf("\033[0;47;33m⇢\033[0m");
+                    break;
             }
         }
         printf("\n");
     }
-                    if(game_status > 0 && game_status == id + 1)
+                    if(game_status > 0 && game_status == id + 1 && end())
                     {
                         printf("You win!\n");
                         exit(1);
                     }
-                    else if(game_status > 0 && game_status != id + 1)
+                    else if(game_status > 0 && game_status != id + 1 && end())
                     {
                         printf("You lose!\n");
-                        printf("%d %d\n",id,game_status);
+                        exit(1);
+                    }
+                    else if(game_status == 0 && end())
+                    {
+                        printf("You lose!\n");
                         exit(1);
                     }
 }
 
 //将服务端传来的数据格式转化为渲染所需格式
-void trans(int *x,int *y,int *turn,struct Bullets *bullets,int* location_palyer1, int* location_palyer2, int* location_bullet1, int* location_bullet2){
+void trans(int *x,int *y,int *turn,struct Bullets *bullets,int* location_palyer1, int* location_palyer2,int* location_palyer3, int* location_bullet1, int* location_bullet2,int* location_bullet3){
     location_palyer1[0] = x[0];
     location_palyer1[1] = y[0];
     location_palyer1[2] = turn[0];
@@ -439,6 +545,10 @@ void trans(int *x,int *y,int *turn,struct Bullets *bullets,int* location_palyer1
     location_palyer2[0] = x[1];
     location_palyer2[1] = y[1];
     location_palyer2[2] = turn[1];
+
+    location_palyer3[0] = x[2];
+    location_palyer3[1] = y[2];
+    location_palyer3[2] = turn[2];
 
     //子弹不存在则坐标归零
     for(int i=0;i<2;i++){
@@ -454,6 +564,10 @@ void trans(int *x,int *y,int *turn,struct Bullets *bullets,int* location_palyer1
     location_bullet2[0] = bullets[1].x;
     location_bullet2[1] = bullets[1].y;
     location_bullet2[2] = bullets[1].turn;
+
+    location_bullet3[0] = bullets[2].x;
+    location_bullet3[1] = bullets[2].y;
+    location_bullet3[2] = bullets[2].turn;
 }
 void ShowMenu()
 {
